@@ -1,0 +1,70 @@
+
+name: Build Anis UNSS APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Enable Android permissions
+        run: |
+          for perm in SCHEDULE_EXACT_ALARM USE_EXACT_ALARM RECEIVE_BOOT_COMPLETED WAKE_LOCK VIBRATE POST_NOTIFICATIONS; do
+            sed -i "/<application/i\\    <uses-permission android:name=\"android.permission.$perm\" />" android/app/src/main/AndroidManifest.xml
+          done
+
+      - name: Copy app icons and sounds
+        run: |
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            mkdir -p android/app/src/main/res/mipmap-$d
+            cp resources/mipmap-$d/*.png android/app/src/main/res/mipmap-$d/
+          done
+
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi nodpi; do
+            mkdir -p android/app/src/main/res/drawable-$d
+            cp resources/drawable-$d/*.png android/app/src/main/res/drawable-$d/
+          done
+
+          mkdir -p android/app/src/main/res/raw
+          cp resources/sounds/*.wav android/app/src/main/res/raw/
+          cp resources/sounds/adhan.mp3 android/app/src/main/res/raw/
+
+      - name: Sync Android
+        run: npx cap sync android
+
+      - name: Build APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Anis-UNSS-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
