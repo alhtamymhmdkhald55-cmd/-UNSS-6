@@ -25,19 +25,59 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Extract Anis UNSS project
+        run: |
+          mkdir -p proj
+
+          ZIP_FILE="Anis_UNSS_updated.zip"
+
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "ERROR: Anis_UNSS_updated.zip not found!"
+            echo "ZIP files in repository:"
+            find . -maxdepth 2 -iname "*.zip"
+            exit 1
+          fi
+
+          unzip -q "$ZIP_FILE" -d proj
+
+          if [ ! -f proj/package.json ]; then
+            echo "ERROR: package.json not found after extraction!"
+            find proj -maxdepth 3 -type f | head -100
+            exit 1
+          fi
+
+          echo "Project extracted successfully"
+
       - name: Install dependencies
+        working-directory: proj
         run: npm install
 
       - name: Add Android platform
+        working-directory: proj
         run: npx cap add android
 
       - name: Enable Android permissions
+        working-directory: proj
         run: |
-          for perm in SCHEDULE_EXACT_ALARM USE_EXACT_ALARM RECEIVE_BOOT_COMPLETED WAKE_LOCK VIBRATE POST_NOTIFICATIONS; do
-            sed -i "/<application/i\\    <uses-permission android:name=\"android.permission.$perm\" />" android/app/src/main/AndroidManifest.xml
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+
+          for perm in \
+            INTERNET \
+            ACCESS_FINE_LOCATION \
+            ACCESS_COARSE_LOCATION \
+            POST_NOTIFICATIONS \
+            SCHEDULE_EXACT_ALARM \
+            RECEIVE_BOOT_COMPLETED \
+            WAKE_LOCK \
+            VIBRATE; do
+
+            if ! grep -q "android.permission.$perm" "$MANIFEST"; then
+              sed -i "/<application/i\\    <uses-permission android:name=\"android.permission.$perm\" />" "$MANIFEST"
+            fi
           done
 
-      - name: Copy app icons and sounds
+      - name: Copy app icons
+        working-directory: proj
         run: |
           for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             mkdir -p android/app/src/main/res/mipmap-$d
@@ -49,16 +89,21 @@ jobs:
             cp resources/drawable-$d/*.png android/app/src/main/res/drawable-$d/
           done
 
+      - name: Copy notification sounds
+        working-directory: proj
+        run: |
           mkdir -p android/app/src/main/res/raw
+
           cp resources/sounds/*.wav android/app/src/main/res/raw/
           cp resources/sounds/adhan.mp3 android/app/src/main/res/raw/
 
       - name: Sync Android
+        working-directory: proj
         run: npx cap sync android
 
       - name: Build APK
+        working-directory: proj/android
         run: |
-          cd android
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
@@ -66,5 +111,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Anis-UNSS-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: proj/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
